@@ -1,7 +1,7 @@
 # terminate-long-running-aws-resources
 Scan and terminate long running AWS resources (EC2, RDS etc.)
 
-
+## Setup
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
 This project is set up like a standard Python project.  The initialization
@@ -54,4 +54,23 @@ command.
  * `cdk diff`        compare deployed stack with current state
  * `cdk docs`        open CDK documentation
 
-Enjoy!
+## Preparation
+- create .env file
+```
+MY_EMAIL=you_email@domain.com
+MAX_RUNTIME=3600
+```
+## Test Lambda function locally
+
+```
+$ cdk synth --no-staging
+```
+
+```
+$ sam local invoke TerminateLongRunningAwsResourcesFunction --no-event -t ./cdk.out/TerminateLongRunningAwsResourcesStack.template.json
+```
+
+## Deloyment
+- cdk synth
+- cdk diff
+- cdk deploy

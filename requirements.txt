@@ -1,2 +1,5 @@
 aws-cdk-lib==2.64.0
 constructs>=10.0.0,<11.0.0
+boto3>=1.26.69
+python-dotenv>=0.21.1
+aws_solutions_constructs.aws_eventbridge_lambda>=2.31.0
