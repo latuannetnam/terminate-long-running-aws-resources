@@ -59,6 +59,7 @@ command.
 ```
 MY_EMAIL=you_email@domain.com
 MAX_RUNTIME=3600
+CRON=cron(0/15 * * * ? *)
 ```
 ## Test Lambda function locally
 

@@ -18,6 +18,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
         # Load environtment variables
         load_dotenv()        
+        
         # Create SNS Topic
         my_email = os.getenv("MY_EMAIL")
         my_topic = sns.Topic(self, "TerminateLongRunningAWSResourceTopic")
@@ -49,12 +50,14 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         ))
 
         # Create schedule event to invoke lamda
+        my_cron=os.getenv("CRON", "cron(0/15 * * * ? *)")
         EventbridgeToLambda(self, 'terminate_long_running_aws_resources_cron',
                     existing_lambda_obj=my_lambda,
                     event_rule_props=events.RuleProps(
-                        schedule=events.Schedule.cron(minute="0/15")
+                        schedule=events.Schedule.expression(my_cron)
                     ))
 
+        # schedule=events.Schedule.expression("0/15 * * * ? *")
+        # schedule=events.Schedule.cron(minute="0/15")
         
-
         
