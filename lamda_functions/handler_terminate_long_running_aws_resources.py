@@ -10,20 +10,22 @@ sns_topicARN = os.environ.get('SNS_TOPIC','')
 sns_message={}
 current_time = datetime.now(timezone.utc)
 
-def available_regions(service):
+async def available_regions(service):
     regions = []
-    client = boto3.client(service)
-    response = client.describe_regions()
-
-    for item in response["Regions"]:
-        regions.append(item["RegionName"])
+    # client = boto3.client(service)
+    session = aioboto3.Session()
+    async with session.client(service) as client:
+        response = await client.describe_regions()
+        for item in response["Regions"]:
+            regions.append(item["RegionName"])
 
     return regions
 
 async def check_long_running_instances(region):
     print("Check Region:", region)
     my_config = Config(region_name=region)
-    async with aioboto3.client('ec2', config=my_config) as client:
+    session = aioboto3.Session()
+    async with session.client('ec2', config=my_config) as client:
         response = await client.describe_instances(Filters=[{
                     'Name': 'instance-state-name',
                     'Values': ['running']
@@ -51,14 +53,18 @@ async def check_long_running_instances(region):
                 regional_instance_id = region + "-" + instance_id
                 if state=="running" and runtime>= max_runtime and can_terminate:
                     print("Terminating instance:", regional_instance_id)
-                    await client.terminate_instances(InstanceIds=[instance_id])
-                    sns_message[regional_instance_id] = "Terminated"
+                    try:
+                        await client.terminate_instances(InstanceIds=[instance_id])
+                        sns_message[regional_instance_id] = "Terminated"
+                    except Exception  as e:
+                        print("Can not terminate instance:", instance["InstanceId"], "reason:", e)
+                        sns_message[regional_instance_id] = "Try to Terminate but failed with reason:" + str(e)
                 else:
                     sns_message[regional_instance_id] = "Not Terminated"
     print("Check Region:", region, " Done!")
 
-async def lambda_handler(event, context):
-    regions = available_regions('ec2')
+async def async_handler(event, context):
+    regions = await available_regions('ec2')
     tasks = []
     for region in regions:
         tasks.append(asyncio.create_task(check_long_running_instances(region)))
@@ -74,3 +80,15 @@ async def lambda_handler(event, context):
         'statusCode': 200,
         'body': json.dumps(sns_message)
     }
+
+
+def lambda_handler(event, context):
+    print("Begin to scan resources")
+    result = asyncio.run(async_handler(None, None))    
+    print("Done!")
+    return result
+
+
+if __name__ == "__main__":
+    print("Run test lamda function locally")
+    print(lambda_handler(None, None))    

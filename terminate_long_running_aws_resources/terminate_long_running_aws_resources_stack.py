@@ -27,16 +27,30 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         my_topic.add_subscription(
             sub_subscriptions.EmailSubscription(my_email))
 
-        # Create Lamda function
+        # Create Lamda function with asyncio
+        # my_lambda = _lamda.Function(
+        #     self, "TerminateLongRunningAwsResourcesFunction",
+        #     runtime=_lamda.Runtime.PYTHON_3_9,
+        #     code=_lamda.Code.from_asset(os.path.join(os.path.dirname(os.path.abspath(__file__)),"../lamda_functions"),  bundling=BundlingOptions(
+        #         image=_lamda.Runtime.PYTHON_3_9.bundling_image,
+        #         command=["bash", "-c", "pip install -r requirements.txt -t /asset-output && cp -fr ./ /asset-output"
+        #                  ]
+        #     )),
+        #     handler="handler_terminate_long_running_aws_resources.lambda_handler",
+        #     timeout=Duration.seconds(90),
+        #     environment={
+        #         'MAX_RUNTIME': os.getenv("MAX_RUNTIME", '3600'),
+        #         'SNS_TOPIC': my_topic.topic_arn
+        #     }
+        # )
+
+
+        # Create Lamda function with sync
         my_lambda = _lamda.Function(
             self, "TerminateLongRunningAwsResourcesFunction",
             runtime=_lamda.Runtime.PYTHON_3_9,
-            code=_lamda.Code.from_asset("lamda_functions",  bundling=BundlingOptions(
-                image=_lamda.Runtime.PYTHON_3_9.bundling_image,
-                command=["bash", "-c", "pip install -r requirements.txt -t /asset-output && cp -au . /asset-output"
-                         ]
-            )),
-            handler="handler_terminate_long_running_aws_resources.lambda_handler",
+            code=_lamda.Code.from_asset("lamda_functions"),
+            handler="handler_terminate_long_running_aws_resources_sync.lambda_handler",
             timeout=Duration.seconds(90),
             environment={
                 'MAX_RUNTIME': os.getenv("MAX_RUNTIME", '3600'),
