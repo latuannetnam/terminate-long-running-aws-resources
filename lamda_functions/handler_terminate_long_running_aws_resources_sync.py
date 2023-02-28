@@ -4,11 +4,10 @@ import os
 import json
 from datetime import datetime, timezone, tzinfo
 
-client = boto3.client('ec2')
+# client = boto3.client('ec2')
 max_runtime = int(os.environ.get('MAX_RUNTIME', '3600'))
 sns_topicARN = os.environ.get('SNS_TOPIC','')
 sns_message={}
-current_time = datetime.now(timezone.utc)
 
 def available_regions(service):
     regions = []
@@ -22,6 +21,7 @@ def available_regions(service):
 
 def check_long_running_instances(region):
     # print("Check Region:", region)
+    current_time = datetime.now(timezone.utc)
     my_config = Config(region_name=region)
     client = boto3.client('ec2', config=my_config)
     response = client.describe_instances(Filters=[{
@@ -59,6 +59,7 @@ def check_long_running_instances(region):
                     sns_message[regional_instance_id] = "Try to Terminate but failed with reason:" + str(e)
 
 def lambda_handler(event, context):
+    sns_message={}
     regions = available_regions("ec2")
     for region in regions:
         check_long_running_instances(region)

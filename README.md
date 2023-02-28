@@ -59,7 +59,9 @@ command.
 ```
 MY_EMAIL=you_email@domain.com
 MAX_RUNTIME=3600
-CRON=cron(0/15 * * * ? *)
+EC2_CRON=cron(0/15 * * * ? *)
+ELASTIC_IP_MAX_TIME=900
+ELASTIC_IP_CRON=cron(0/5 * * * ? *)
 ```
 ## Test Lambda function locally
 
@@ -72,6 +74,6 @@ $ sam local invoke TerminateLongRunningAwsResourcesFunction --no-event -t ./cdk.
 ```
 
 ## Deloyment
-- cdk synth
-- cdk diff
-- cdk deploy
+- cdk synth --profile profile_id
+- cdk diff --profile profile_id
+- cdk deploy --profile profile_id

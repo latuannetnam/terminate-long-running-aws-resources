@@ -27,6 +27,16 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         my_topic.add_subscription(
             sub_subscriptions.EmailSubscription(my_email))
 
+        # schedule=events.Schedule.expression("0/15 * * * ? *")
+        # schedule=events.Schedule.cron(minute="0/15")
+        # Terminate long running EC2 instances
+        self.terminate_long_running_ec2(my_topic)
+
+        # -----------------------------------------------------------------------
+        # Create Lambda function: release unused Elastic IP Addresses
+        self.release_unused_elastic_ip(my_topic)
+
+    def terminate_long_running_ec2(self, my_topic):
         # Create Lamda function with asyncio
         # my_lambda = _lamda.Function(
         #     self, "TerminateLongRunningAwsResourcesFunction",
@@ -44,8 +54,8 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         #     }
         # )
 
-
         # Create Lamda function with sync
+        # Terminate long running EC2 instances
         my_lambda = _lamda.Function(
             self, "TerminateLongRunningAwsResourcesFunction",
             runtime=_lamda.Runtime.PYTHON_3_9,
@@ -71,12 +81,44 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         ))
 
         # Create schedule event to invoke lamda
-        my_cron = os.getenv("CRON", "cron(0/15 * * * ? *)")
+        my_cron = os.getenv("EC2_CRON", "cron(0/15 * * * ? *)")
         EventbridgeToLambda(self, 'terminate_long_running_aws_resources_cron',
                             existing_lambda_obj=my_lambda,
                             event_rule_props=events.RuleProps(
                                 schedule=events.Schedule.expression(my_cron)
                             ))
 
-        # schedule=events.Schedule.expression("0/15 * * * ? *")
-        # schedule=events.Schedule.cron(minute="0/15")
+    def release_unused_elastic_ip(self, my_topic):
+        my_lambda = _lamda.Function(
+            self, "ReleaseUnusedElasticIPAddresses",
+            runtime=_lamda.Runtime.PYTHON_3_9,
+            code=_lamda.Code.from_asset("lamda_functions"),
+            handler="handler_release_unused_elastic_ip.lambda_handler",
+            timeout=Duration.seconds(90),
+            environment={
+                'ELASTIC_IP_MAX_TIME': os.getenv("ELASTIC_IP_MAX_TIME", '900'),
+                'SNS_TOPIC': my_topic.topic_arn
+            }
+        )
+
+        # Add policy to Lamda Execution role
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndReleaseUnusedElasticIPAndPublishToSNSTopic",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["ec2:CreateTags",
+                     "ec2:DeleteTags",
+                     "ec2:DescribeTags",
+                     "ec2:DescribeAddresses",
+                     "ec2:ReleaseAddress",
+                     "ec2:DescribeRegions",
+                     "sns:Publish"],
+        ))
+
+        # Create schedule event to invoke lamda
+        my_cron = os.getenv("ELASTIC_IP_CRON", "cron(0/5 * * * ? *)")
+        EventbridgeToLambda(self, 'release_unused_elastic_ip_cron',
+                            existing_lambda_obj=my_lambda,
+                            event_rule_props=events.RuleProps(
+                                schedule=events.Schedule.expression(my_cron)
+                            ))
