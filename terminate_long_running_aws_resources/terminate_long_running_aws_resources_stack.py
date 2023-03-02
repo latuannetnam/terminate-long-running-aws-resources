@@ -30,13 +30,13 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         # schedule=events.Schedule.expression("0/15 * * * ? *")
         # schedule=events.Schedule.cron(minute="0/15")
         # Terminate long running EC2 instances
-        self.terminate_long_running_ec2(my_topic)
+        self.terminate_long_running_resources(my_topic)
 
         # -----------------------------------------------------------------------
         # Create Lambda function: release unused Elastic IP Addresses
-        self.release_unused_elastic_ip(my_topic)
+        # self.release_unused_elastic_ip(my_topic)
 
-    def terminate_long_running_ec2(self, my_topic):
+    def terminate_long_running_resources(self, my_topic):
         # Create Lamda function with asyncio
         # my_lambda = _lamda.Function(
         #     self, "TerminateLongRunningAwsResourcesFunction",
@@ -64,11 +64,13 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             timeout=Duration.seconds(90),
             environment={
                 'MAX_RUNTIME': os.getenv("MAX_RUNTIME", '3600'),
+                'ELASTIC_IP_MAX_TIME': os.getenv("ELASTIC_IP_MAX_TIME", '3600'),
+                'NAT_GATEWAY_MAX_TIME': os.getenv("NAT_GATEWAY_MAX_TIME", '3600'),
                 'SNS_TOPIC': my_topic.topic_arn
             }
         )
 
-        # Add policy to Lamda Execution role
+        # Add policy to Lamda Execution role to list and terminate EC2 instance
         my_lambda.add_to_role_policy(iam.PolicyStatement(
             sid="AllowToListAndTerminateEC2InstancesAndOublishToSNSTopic",
             effect=iam.Effect.ALLOW,
@@ -80,8 +82,33 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                      "sns:Publish"],
         ))
 
+        # Add policy to Lamda Execution role to list and release Elastic IP
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndReleaseUnusedElasticIP",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["ec2:CreateTags",
+                     "ec2:DeleteTags",
+                     "ec2:DescribeTags",
+                     "ec2:DescribeAddresses",
+                     "ec2:ReleaseAddress",
+            ]
+                     
+        ))
+
+        # Add policy to Lamda Execution role to list and delete NAT Gateway
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndDeleteNATGateway",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["ec2:DescribeNatGateways",
+                     "ec2:DeleteNatGateway",
+            ]
+                     
+        ))
+
         # Create schedule event to invoke lamda
-        my_cron = os.getenv("EC2_CRON", "cron(0/15 * * * ? *)")
+        my_cron = os.getenv("CRON", "cron(0/15 * * * ? *)")
         EventbridgeToLambda(self, 'terminate_long_running_aws_resources_cron',
                             existing_lambda_obj=my_lambda,
                             event_rule_props=events.RuleProps(

@@ -59,9 +59,9 @@ command.
 ```
 MY_EMAIL=you_email@domain.com
 MAX_RUNTIME=3600
-EC2_CRON=cron(0/15 * * * ? *)
 ELASTIC_IP_MAX_TIME=900
-ELASTIC_IP_CRON=cron(0/5 * * * ? *)
+NAT_GATEWAY_MAX_TIME=900
+CRON=cron(0/15 * * * ? *)
 ```
 ## Test Lambda function locally
 
