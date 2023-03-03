@@ -1,4 +1,5 @@
 import os
+import aws_cdk
 from aws_cdk import (
     Duration,
     Stack,
@@ -31,6 +32,8 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         # schedule=events.Schedule.cron(minute="0/15")
         # Terminate long running EC2 instances
         self.terminate_long_running_resources(my_topic)
+
+        aws_cdk.CfnOutput(self, "SNS Topic", value=my_topic.topic_arn)
 
         # -----------------------------------------------------------------------
         # Create Lambda function: release unused Elastic IP Addresses

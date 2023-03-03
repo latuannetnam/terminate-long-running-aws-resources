@@ -63,9 +63,10 @@ class TerminateLongRunningResource:
                             can_terminate = False
                             break
 
-                print("state:", state, "run time:", runtime,"/", MAX_RUNTIME, " can_terminate:", can_terminate)
                 instance_id = instance["InstanceId"]
                 regional_instance_id = region + "-" + instance_id
+                print(regional_instance_id, ": state:", state, "run time:", runtime,"/", MAX_RUNTIME, " can_terminate:", can_terminate)
+
                 if state=="running" and runtime>= MAX_RUNTIME and can_terminate:
                     print("Terminate instance:", instance_id)
                     try:
@@ -82,12 +83,12 @@ class TerminateLongRunningResource:
         response = ec2.describe_addresses()
         for address in response['Addresses']:
             allocation_id = address['AllocationId']
+            regional_id = region + "-" + allocation_id + "-" + address["PublicIp"]
             if 'AssociationId' not in address:
-                print("Address: ", allocation_id, "-",
+                print("Address: ", regional_id, "-",
                     address["PublicIp"], "is not associated with any resources")
                 last_time = None
-                
-                
+
                 if 'Tags' in address:
                     for tag in address['Tags']:
                         # print(tag)
@@ -103,7 +104,7 @@ class TerminateLongRunningResource:
                     delta_time = (current_time - last_time).total_seconds()
                     print("Elapsed time:", current_time, last_time, delta_time)
                     if delta_time >= ELASTIC_IP_MAX_TIME:
-                        regional_id = region + "-" + allocation_id + "-" + address["PublicIp"]
+                        
                         print("Release Elastic IP:", regional_id, "-", address["PublicIp"])
                         try:
                             ec2.release_address(AllocationId=allocation_id)
