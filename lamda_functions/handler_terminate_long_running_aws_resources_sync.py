@@ -4,29 +4,34 @@ import os
 import json
 from datetime import datetime, timezone, tzinfo
 from botocore.exceptions import ClientError
-from enum import Enum
+from enum import Enum, auto
+import pprint
 
 # Constants
 TAG_KEY = "Epoch"
 MAX_RUNTIME = int(os.environ.get('MAX_RUNTIME', '3600'))
-ELASTIC_IP_MAX_TIME = int(os.environ.get('ELASTIC_IP_MAX_TIME', '3600'))
+ELASTIC_IP_MAX_TIME = int(os.environ.get('ELASTIC_IP_MAX_TIME', '900'))
 NAT_GATEWAY_MAX_TIME = int(os.environ.get('NAT_GATEWAY_MAX_TIME', '900'))
 TRANSIT_GATEWAY_MAX_TIME = int(os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'))
 
 sns_topicARN = os.environ.get('SNS_TOPIC','')
 
 
-class ServiceTypes(Enum):
-    EC2=1
-    ELASTIC_IP=2
-    NAT_GATEWAY=3
-    TRANSIT_GATEWAY=4
+class ServiceTypes(str, Enum):
+    def _generate_next_value_(name, start, count, last_values):
+        return name
+    
+    EC2= auto()
+    ELASTIC_IP=auto()
+    NAT_GATEWAY=auto()
+    TRANSIT_GATEWAY=auto()
 
 class TerminateLongRunningResource:
     def __init__(self) -> None:
         self.sns_message={}    
         for service in ServiceTypes:
             self.sns_message[service] = {}
+        # pprint.pprint(self.sns_message)
 
     def available_regions(self, service):
         regions = []
@@ -183,43 +188,59 @@ class TerminateLongRunningResource:
             self.find_and_release_unused_elastic_ip(region)
             self.check_long_running_nat_gateways(region)
             self.check_long_running_transit_gateway(region)
+
+        can_send_message = False
+        for service in ServiceTypes:
+            if self.sns_message[service]:
+                can_send_message= True
+                pprint.pprint(self.sns_message)        
+                break
         
-        if self.sns_message[ServiceTypes.EC2] and sns_topicARN:
+        if can_send_message and sns_topicARN:
             sns_client = boto3.client('sns', region_name='ap-southeast-1')
             resp = sns_client.publish(
                 TopicArn=sns_topicARN,
-                Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.EC2], indent=4)}),
-                Subject='Server Shutdown Warning',
+                Message=json.dumps({'default': json.dumps(self.sns_message, indent=4)}),
+                Subject='Terminate long running resources Warning',
                 MessageStructure='json'
             )
+            
+        # if self.sns_message[ServiceTypes.EC2] and sns_topicARN:
+        #     sns_client = boto3.client('sns', region_name='ap-southeast-1')
+        #     resp = sns_client.publish(
+        #         TopicArn=sns_topicARN,
+        #         Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.EC2], indent=4)}),
+        #         Subject='Server Shutdown Warning',
+        #         MessageStructure='json'
+        #     )
 
-        if self.sns_message[ServiceTypes.ELASTIC_IP] and sns_topicARN:
-            sns_client = boto3.client('sns', region_name='ap-southeast-1')
-            resp = sns_client.publish(
-                TopicArn=sns_topicARN,
-                Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.ELASTIC_IP], indent=4)}),
-                Subject='Elastic IP Release Warning',
-                MessageStructure='json'
-            )
+        # if self.sns_message[ServiceTypes.ELASTIC_IP] and sns_topicARN:
+        #     sns_client = boto3.client('sns', region_name='ap-southeast-1')
+        #     resp = sns_client.publish(
+        #         TopicArn=sns_topicARN,
+        #         Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.ELASTIC_IP], indent=4)}),
+        #         Subject='Elastic IP Release Warning',
+        #         MessageStructure='json'
+        #     )
 
 
-        if self.sns_message[ServiceTypes.NAT_GATEWAY] and sns_topicARN:
-            sns_client = boto3.client('sns', region_name='ap-southeast-1')
-            resp = sns_client.publish(
-                TopicArn=sns_topicARN,
-                Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.NAT_GATEWAY], indent=4)}),
-                Subject='NAT Gateway Delete Warning',
-                MessageStructure='json'
-            )
+        # if self.sns_message[ServiceTypes.NAT_GATEWAY] and sns_topicARN:
+        #     sns_client = boto3.client('sns', region_name='ap-southeast-1')
+        #     resp = sns_client.publish(
+        #         TopicArn=sns_topicARN,
+        #         Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.NAT_GATEWAY], indent=4)}),
+        #         Subject='NAT Gateway Delete Warning',
+        #         MessageStructure='json'
+        #     )
 
-        if self.sns_message[ServiceTypes.TRANSIT_GATEWAY] and sns_topicARN:
-            sns_client = boto3.client('sns', region_name='ap-southeast-1')
-            resp = sns_client.publish(
-                TopicArn=sns_topicARN,
-                Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.TRANSIT_GATEWAY], indent=4)}),
-                Subject='Transit Gateway Delete Warning',
-                MessageStructure='json'
-            )
+        # if self.sns_message[ServiceTypes.TRANSIT_GATEWAY] and sns_topicARN:
+        #     sns_client = boto3.client('sns', region_name='ap-southeast-1')
+        #     resp = sns_client.publish(
+        #         TopicArn=sns_topicARN,
+        #         Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.TRANSIT_GATEWAY], indent=4)}),
+        #         Subject='Transit Gateway Delete Warning',
+        #         MessageStructure='json'
+        #     )
 
 
 def lambda_handler(event, context):
