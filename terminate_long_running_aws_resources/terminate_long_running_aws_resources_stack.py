@@ -8,7 +8,7 @@ from aws_cdk import (
     aws_sns as sns,
     aws_sns_subscriptions as sub_subscriptions,
     aws_events as events,
-    BundlingOptions
+
 )
 from aws_solutions_constructs.aws_eventbridge_lambda import EventbridgeToLambda, EventbridgeToLambdaProps
 from dotenv import load_dotenv
@@ -69,6 +69,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                 'MAX_RUNTIME': os.getenv("MAX_RUNTIME", '3600'),
                 'ELASTIC_IP_MAX_TIME': os.getenv("ELASTIC_IP_MAX_TIME", '3600'),
                 'NAT_GATEWAY_MAX_TIME': os.getenv("NAT_GATEWAY_MAX_TIME", '3600'),
+                'TRANSIT_GATEWAY_MAX_TIME':os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '3600'),
                 'SNS_TOPIC': my_topic.topic_arn
             }
         )
@@ -95,8 +96,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                      "ec2:DescribeTags",
                      "ec2:DescribeAddresses",
                      "ec2:ReleaseAddress",
-            ]
-                     
+            ]        
         ))
 
         # Add policy to Lamda Execution role to list and delete NAT Gateway
@@ -106,8 +106,19 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             resources=["*"],
             actions=["ec2:DescribeNatGateways",
                      "ec2:DeleteNatGateway",
-            ]
-                     
+            ]        
+        ))
+
+        # Add policy to Lamda Execution role to list and delete Transit Gateway
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndDeleteTransitGateway",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["ec2:DescribeTransitGateways",
+                     "ec2:DeleteTransitGateway",
+                     "ec2:DescribeTransitGatewayAttachments",
+                     "ec2:DeleteTransitGatewayVpcAttachment",
+            ]        
         ))
 
         # Create schedule event to invoke lamda

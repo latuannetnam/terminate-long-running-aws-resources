@@ -10,7 +10,8 @@ from enum import Enum
 TAG_KEY = "Epoch"
 MAX_RUNTIME = int(os.environ.get('MAX_RUNTIME', '3600'))
 ELASTIC_IP_MAX_TIME = int(os.environ.get('ELASTIC_IP_MAX_TIME', '3600'))
-NAT_GATEWAY_MAX_TIME = int(os.environ.get('NAT_GATEWAY_MAX_TIME', '3600'))
+NAT_GATEWAY_MAX_TIME = int(os.environ.get('NAT_GATEWAY_MAX_TIME', '900'))
+TRANSIT_GATEWAY_MAX_TIME = int(os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'))
 
 sns_topicARN = os.environ.get('SNS_TOPIC','')
 
@@ -19,6 +20,7 @@ class ServiceTypes(Enum):
     EC2=1
     ELASTIC_IP=2
     NAT_GATEWAY=3
+    TRANSIT_GATEWAY=4
 
 class TerminateLongRunningResource:
     def __init__(self) -> None:
@@ -141,12 +143,46 @@ class TerminateLongRunningResource:
                         print(e)
                         self.sns_message[ServiceTypes.NAT_GATEWAY][nat_gateway_id] = "Try to delete but failed with reason:" + str(e)
     
+    def check_long_running_transit_gateway(self, region):
+        current_time = datetime.now(timezone.utc)
+        my_config = Config(region_name=region)
+        client = boto3.client('ec2', config=my_config)
+        response = client.describe_transit_gateways()
+        for gateway in response['TransitGateways']:
+            gateway_id = region + "-" + gateway['TransitGatewayId']
+            time_diff = current_time - gateway['CreationTime']
+            runtime = time_diff.total_seconds()
+            print("Transit gateway:", gateway_id, " State:", gateway['State'], " Created:", gateway['CreationTime'], " runtime:", runtime)
+            if gateway['State'] == 'available':
+                if runtime >= TRANSIT_GATEWAY_MAX_TIME:
+                    print("List and delete all gateway attachments:")
+                    res = client.describe_transit_gateway_attachments(Filters=[
+                                                                 {
+                                                                    'Name':'transit-gateway-id',
+                                                                    'Values':[gateway['TransitGatewayId']]
+                                                                }
+                                                    ])
+                    # print(res)
+                    for gateway_attachment in res['TransitGatewayAttachments']:
+                        print("Delete Transit gateway attachment:", gateway_attachment['TransitGatewayAttachmentId'])
+                        client.delete_transit_gateway_vpc_attachment(TransitGatewayAttachmentId=gateway_attachment['TransitGatewayAttachmentId'])
+                        
+                    print("Delete long running Transit Gateway:", gateway_id, " runtime:", runtime, "/", TRANSIT_GATEWAY_MAX_TIME)
+                    try:
+                        client.delete_transit_gateway(TransitGatewayId=gateway['TransitGatewayId'])
+                        self.sns_message[ServiceTypes.TRANSIT_GATEWAY][gateway_id] = "Deleted"
+                    except ClientError as e:
+                        print(e)
+                        self.sns_message[ServiceTypes.TRANSIT_GATEWAY][gateway_id] = "Try to delete but failed with reason:" + str(e)
+
+    
     def run_handler(self):
         regions = self.available_regions("ec2")
         for region in regions:
             self.check_long_running_instances(region)
             self.find_and_release_unused_elastic_ip(region)
             self.check_long_running_nat_gateways(region)
+            self.check_long_running_transit_gateway(region)
         
         if self.sns_message[ServiceTypes.EC2] and sns_topicARN:
             sns_client = boto3.client('sns', region_name='ap-southeast-1')
@@ -173,6 +209,15 @@ class TerminateLongRunningResource:
                 TopicArn=sns_topicARN,
                 Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.NAT_GATEWAY], indent=4)}),
                 Subject='NAT Gateway Delete Warning',
+                MessageStructure='json'
+            )
+
+        if self.sns_message[ServiceTypes.TRANSIT_GATEWAY] and sns_topicARN:
+            sns_client = boto3.client('sns', region_name='ap-southeast-1')
+            resp = sns_client.publish(
+                TopicArn=sns_topicARN,
+                Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.TRANSIT_GATEWAY], indent=4)}),
+                Subject='Transit Gateway Delete Warning',
                 MessageStructure='json'
             )
 
