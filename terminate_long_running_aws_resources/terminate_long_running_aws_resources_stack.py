@@ -62,12 +62,13 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             runtime=_lamda.Runtime.PYTHON_3_9,
             code=_lamda.Code.from_asset("lamda_functions"),
             handler="handler_terminate_long_running_aws_resources_sync.lambda_handler",
-            timeout=Duration.seconds(90),
+            timeout=Duration.seconds(180),
             environment={
                 'MAX_RUNTIME': os.getenv("MAX_RUNTIME", '3600'),
                 'ELASTIC_IP_MAX_TIME': os.getenv("ELASTIC_IP_MAX_TIME", '900'),
                 'NAT_GATEWAY_MAX_TIME': os.getenv("NAT_GATEWAY_MAX_TIME", '900'),
                 'TRANSIT_GATEWAY_MAX_TIME':os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'),
+                'CLIENT_VPN_ENDPOINT_MAX_TIME':os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'),
                 'SNS_TOPIC': my_topic.topic_arn
             }
         )
@@ -116,6 +117,18 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                      "ec2:DeleteTransitGateway",
                      "ec2:DescribeTransitGatewayAttachments",
                      "ec2:DeleteTransitGatewayVpcAttachment",
+            ]        
+        ))
+
+        # Add policy to Lamda Execution role to list and delete Client VPN Endpoints
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndDeleteClientVPNEndpoints",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["ec2:DescribeClientVpnEndpoints",
+                     "ec2:DescribeClientVpnTargetNetworks",
+                     "ec2:DisassociateClientVpnTargetNetwork",
+                     "ec2:DeleteClientVpnEndpoint",
             ]        
         ))
 

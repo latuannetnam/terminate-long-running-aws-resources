@@ -13,9 +13,12 @@ MAX_RUNTIME = int(os.environ.get('MAX_RUNTIME', '3600'))
 ELASTIC_IP_MAX_TIME = int(os.environ.get('ELASTIC_IP_MAX_TIME', '900'))
 NAT_GATEWAY_MAX_TIME = int(os.environ.get('NAT_GATEWAY_MAX_TIME', '900'))
 TRANSIT_GATEWAY_MAX_TIME = int(os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'))
+CLIENT_VPN_ENDPOINT_MAX_TIME = int(os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'))
 
 sns_topicARN = os.environ.get('SNS_TOPIC','')
 
+def utc_to_local(utc_dt):
+    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
 class ServiceTypes(str, Enum):
     def _generate_next_value_(name, start, count, last_values):
@@ -25,6 +28,7 @@ class ServiceTypes(str, Enum):
     ELASTIC_IP=auto()
     NAT_GATEWAY=auto()
     TRANSIT_GATEWAY=auto()
+    CLIENT_VPN_ENDPOINT=auto()
 
 class TerminateLongRunningResource:
     def __init__(self) -> None:
@@ -181,6 +185,42 @@ class TerminateLongRunningResource:
                         self.sns_message[ServiceTypes.TRANSIT_GATEWAY][gateway_id] = "Try to delete but failed with reason:" + str(e)
 
     
+    def check_long_running_client_vpn_endpoints(self, region):
+        # print("Region:", region)
+        current_time = datetime.now(timezone.utc)
+        my_config = Config(region_name=region)
+        client = boto3.client('ec2', config=my_config)
+        try:
+            response = client.describe_client_vpn_endpoints()
+        except ClientError as e:
+            print("Can not list client vpn endpoints for region:", region, "  .reason:" + str(e))
+            return
+        
+        for gateway in response['ClientVpnEndpoints']:
+            gateway_id = region + "-" + gateway['ClientVpnEndpointId']
+            creation_time  = utc_to_local(datetime.strptime(gateway['CreationTime'], '%Y-%m-%dT%H:%M:%S'))
+            time_diff = current_time - creation_time
+            runtime = time_diff.total_seconds()
+            print("Client VPN Endpoint:", gateway_id, " State:", gateway['Status']['Code'], " Created:", creation_time, " runtime:", runtime)
+            if gateway['Status']['Code'] == 'available' or gateway['Status']['Code'] == 'pending-associate':
+                if runtime >= CLIENT_VPN_ENDPOINT_MAX_TIME:
+                    print("List and delete all associated  target networks:")
+                    res = client.describe_client_vpn_target_networks(ClientVpnEndpointId=gateway['ClientVpnEndpointId'])
+                    for target in res['ClientVpnTargetNetworks']:
+                        print("Disassocating target:", target['AssociationId'])
+                        client.disassociate_client_vpn_target_network(ClientVpnEndpointId=gateway['ClientVpnEndpointId'], AssociationId=target['AssociationId'])
+                    
+                    #Delete client vpn endpoint
+                    print("Delete long running Client VPN Endpoints:", gateway_id, " runtime:", runtime, "/", CLIENT_VPN_ENDPOINT_MAX_TIME)
+                    try:
+                        client.delete_client_vpn_endpoint(ClientVpnEndpointId=gateway['ClientVpnEndpointId'])
+                        self.sns_message[ServiceTypes.CLIENT_VPN_ENDPOINT][gateway_id] = "Deleted"
+                    except ClientError as e:
+                        print(e)
+                        self.sns_message[ServiceTypes.CLIENT_VPN_ENDPOINT][gateway_id] = "Try to delete but failed with reason:" + str(e)
+
+    
+    
     def run_handler(self):
         regions = self.available_regions("ec2")
         for region in regions:
@@ -188,6 +228,7 @@ class TerminateLongRunningResource:
             self.find_and_release_unused_elastic_ip(region)
             self.check_long_running_nat_gateways(region)
             self.check_long_running_transit_gateway(region)
+            self.check_long_running_client_vpn_endpoints(region)
 
         can_send_message = False
         for service in ServiceTypes:
@@ -204,45 +245,9 @@ class TerminateLongRunningResource:
                 Subject='Terminate long running resources Warning',
                 MessageStructure='json'
             )
-            
-        # if self.sns_message[ServiceTypes.EC2] and sns_topicARN:
-        #     sns_client = boto3.client('sns', region_name='ap-southeast-1')
-        #     resp = sns_client.publish(
-        #         TopicArn=sns_topicARN,
-        #         Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.EC2], indent=4)}),
-        #         Subject='Server Shutdown Warning',
-        #         MessageStructure='json'
-        #     )
+        
 
-        # if self.sns_message[ServiceTypes.ELASTIC_IP] and sns_topicARN:
-        #     sns_client = boto3.client('sns', region_name='ap-southeast-1')
-        #     resp = sns_client.publish(
-        #         TopicArn=sns_topicARN,
-        #         Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.ELASTIC_IP], indent=4)}),
-        #         Subject='Elastic IP Release Warning',
-        #         MessageStructure='json'
-        #     )
-
-
-        # if self.sns_message[ServiceTypes.NAT_GATEWAY] and sns_topicARN:
-        #     sns_client = boto3.client('sns', region_name='ap-southeast-1')
-        #     resp = sns_client.publish(
-        #         TopicArn=sns_topicARN,
-        #         Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.NAT_GATEWAY], indent=4)}),
-        #         Subject='NAT Gateway Delete Warning',
-        #         MessageStructure='json'
-        #     )
-
-        # if self.sns_message[ServiceTypes.TRANSIT_GATEWAY] and sns_topicARN:
-        #     sns_client = boto3.client('sns', region_name='ap-southeast-1')
-        #     resp = sns_client.publish(
-        #         TopicArn=sns_topicARN,
-        #         Message=json.dumps({'default': json.dumps(self.sns_message[ServiceTypes.TRANSIT_GATEWAY], indent=4)}),
-        #         Subject='Transit Gateway Delete Warning',
-        #         MessageStructure='json'
-        #     )
-
-
+#------------------ Lambda handler ---------------------
 def lambda_handler(event, context):
     obj = TerminateLongRunningResource()
     obj.run_handler()
