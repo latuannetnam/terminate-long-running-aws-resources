@@ -58,11 +58,15 @@ command.
 - create .env file
 ```
 MY_EMAIL=you_email@domain.com
-MAX_RUNTIME=3600
 ELASTIC_IP_MAX_TIME=900
 NAT_GATEWAY_MAX_TIME=900
+TRANSIT_GATEWAY_MAX_TIME=900
+CLIENT_VPN_ENDPOINT_MAX_TIME=900
+VPN_CONNECTION_MAX_TIME=900
 CRON=cron(0/15 * * * ? *)
 ```
+
+- create .env.profile_id for non-default profile
 ## Test Lambda function locally
 
 ```
@@ -74,6 +78,6 @@ $ sam local invoke TerminateLongRunningAwsResourcesFunction --no-event -t ./cdk.
 ```
 
 ## Deloyment
-- cdk synth --profile profile_id
-- cdk diff --profile profile_id
-- cdk deploy --profile profile_id
+- cdk synth -c profile=profile_id --profile profile_id
+- cdk diff -c profile=profile_id --profile profile_id
+- cdk deploy -c profile=profile_id --profile profile_id

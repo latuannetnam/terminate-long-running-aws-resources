@@ -20,8 +20,16 @@ class TerminateLongRunningAwsResourcesStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # Load environtment variables
-        print("Load env variables", os.getenv("ENV"))
-        load_dotenv()
+        profile = self.node.try_get_context("profile")
+        print("Load context:", profile)
+        if profile:
+            env_file = ".env." + profile
+            print("Load env:",env_file)
+            if not load_dotenv(env_file):
+                print("Can not load env:", env_file)
+                load_dotenv()
+        else:
+            load_dotenv()
 
         # Create SNS Topic
         my_email = os.getenv("MY_EMAIL")
