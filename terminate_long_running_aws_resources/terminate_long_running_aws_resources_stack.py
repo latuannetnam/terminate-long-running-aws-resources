@@ -20,6 +20,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         # Load environtment variables
+        print("Load env variables", os.getenv("ENV"))
         load_dotenv()
 
         # Create SNS Topic
@@ -69,6 +70,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                 'NAT_GATEWAY_MAX_TIME': os.getenv("NAT_GATEWAY_MAX_TIME", '900'),
                 'TRANSIT_GATEWAY_MAX_TIME':os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'),
                 'CLIENT_VPN_ENDPOINT_MAX_TIME':os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'),
+                'VPN_CONNECTION_MAX_TIME':os.environ.get('VPN_CONNECTION_MAX_TIME', '900'),
                 'SNS_TOPIC': my_topic.topic_arn
             }
         )
@@ -129,6 +131,16 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                      "ec2:DescribeClientVpnTargetNetworks",
                      "ec2:DisassociateClientVpnTargetNetwork",
                      "ec2:DeleteClientVpnEndpoint",
+            ]        
+        ))
+
+        # Add policy to Lamda Execution role to list and delete VPN Connection
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndDeleteVPNConnections",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["ec2:DescribeVpnConnections",
+                     "ec2:DeleteVpnConnection",                    
             ]        
         ))
 
