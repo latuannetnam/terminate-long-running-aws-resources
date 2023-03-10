@@ -273,9 +273,10 @@ class TerminateLongRunningResource:
                         last_time = datetime.fromisoformat(tag['Value'])
                         break
             if last_time is None:
-                tag = {'Key': TAG_KEY, 'Value': current_time.isoformat()}
-                client.create_tags(Resources=[vpn_connection_id], Tags=[tag])
-                print(vpn_connection_region_id, "Creation time:", current_time)
+                if vpn_connection['State']!= 'deleting' and vpn_connection['State']!= 'deleted':
+                    tag = {'Key': TAG_KEY, 'Value': current_time.isoformat()}
+                    client.create_tags(Resources=[vpn_connection_id], Tags=[tag])
+                    print(vpn_connection_region_id, "State:", vpn_connection['State'], ". Creation time:", current_time)
             else:
                 delta_time = (current_time - last_time).total_seconds()
                 print(vpn_connection_region_id, "Elapsed time:", current_time, last_time, delta_time)
