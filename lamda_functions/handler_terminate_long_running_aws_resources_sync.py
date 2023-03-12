@@ -15,6 +15,7 @@ NAT_GATEWAY_MAX_TIME = int(os.environ.get('NAT_GATEWAY_MAX_TIME', '900'))
 TRANSIT_GATEWAY_MAX_TIME = int(os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'))
 CLIENT_VPN_ENDPOINT_MAX_TIME = int(os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'))
 VPN_CONNECTION_MAX_TIME = int(os.environ.get('VPN_CONNECTION_MAX_TIME', '900'))
+EC2_AUTOSCALING_GROUP_MAX_TIME = int(os.environ.get('EC2_AUTOSCALING_GROUP_MAX_TIME', '900'))
 
 sns_topicARN = os.environ.get('SNS_TOPIC', '')
 
@@ -33,7 +34,7 @@ class ServiceTypes(str, Enum):
     TRANSIT_GATEWAY = auto()
     CLIENT_VPN_ENDPOINT = auto()
     VPN_CONNECTION = auto()
-
+    EC2_AUTOSCALING_GROUP = auto()
 
 class TerminateLongRunningResource:
     def __init__(self) -> None:
@@ -51,6 +52,30 @@ class TerminateLongRunningResource:
             regions.append(item["RegionName"])
 
         return regions
+    
+    def check_long_running_ec2_autoscaling_groups(self, region):
+        current_time = datetime.now(timezone.utc)
+        my_config = Config(region_name=region)
+        client = boto3.client('autoscaling', config=my_config)
+        response = client.describe_auto_scaling_groups()
+        for group in response['AutoScalingGroups']:
+            created_time = group["CreatedTime"]
+            time_diff = current_time - created_time
+            runtime = time_diff.total_seconds()
+            autoscaling_group_id = group['AutoScalingGroupName']
+            region_id = region + "-" + autoscaling_group_id
+            print("Auto Scaling Group: ", region_id, " Created time:", created_time, " runtime:", runtime)
+            print("Capacity:", group["MinSize"], "/", group["DesiredCapacity"], "/", group["MaxSize"])
+            print("Total instances:", len(group['Instances']))
+
+            if runtime> EC2_AUTOSCALING_GROUP_MAX_TIME:
+                print("AutoScaling group:", region_id," deleting ...")
+                try:
+                    client.delete_auto_scaling_group(AutoScalingGroupName=group['AutoScalingGroupName'],ForceDelete=True)
+                    self.sns_message[ServiceTypes.EC2_AUTOSCALING_GROUP][region_id] = "Deleted"
+                except Exception as e:
+                        print("Can not delete autoscaling group:", region_id, "reason:", e)
+                        self.sns_message[ServiceTypes.EC2_AUTOSCALING_GROUP][region_id] = "Try to Terminate but failed with reason:" + str(e)
 
     def check_long_running_instances(self, region):
         # print("Check Region:", region)
@@ -294,6 +319,7 @@ class TerminateLongRunningResource:
     def run_handler(self):
         regions = self.available_regions("ec2")
         for region in regions:
+            self.check_long_running_ec2_autoscaling_groups(region)
             self.check_long_running_instances(region)
             self.find_and_release_unused_elastic_ip(region)
             self.check_long_running_nat_gateways(region)

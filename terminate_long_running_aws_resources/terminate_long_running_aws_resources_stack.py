@@ -79,6 +79,8 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                 'TRANSIT_GATEWAY_MAX_TIME':os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'),
                 'CLIENT_VPN_ENDPOINT_MAX_TIME':os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'),
                 'VPN_CONNECTION_MAX_TIME':os.environ.get('VPN_CONNECTION_MAX_TIME', '900'),
+                'EC2_AUTOSCALING_GROUP_MAX_TIME':os.environ.get('EC2_AUTOSCALING_GROUP_MAX_TIME', '900'),
+
                 'SNS_TOPIC': my_topic.topic_arn
             }
         )
@@ -149,6 +151,16 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             resources=["*"],
             actions=["ec2:DescribeVpnConnections",
                      "ec2:DeleteVpnConnection",                    
+            ]        
+        ))
+
+        # Add policy to Lamda Execution role to list and delete VPN Connection
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndDeleteEC2AutoScalingGroups",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["autoscaling:DescribeAutoScalingGroups",
+                     "autoscaling:DeleteAutoScalingGroup",                    
             ]        
         ))
 
