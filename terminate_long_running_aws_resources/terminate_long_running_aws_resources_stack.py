@@ -71,7 +71,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             runtime=_lamda.Runtime.PYTHON_3_9,
             code=_lamda.Code.from_asset("lamda_functions"),
             handler="handler_terminate_long_running_aws_resources_sync.lambda_handler",
-            timeout=Duration.seconds(180),
+            timeout=Duration.seconds(int(os.environ.get('LAMBDA_MAX_RUNTIME', '360'))),
             environment={
                 'MAX_RUNTIME': os.getenv("MAX_RUNTIME", '3600'),
                 'ELASTIC_IP_MAX_TIME': os.getenv("ELASTIC_IP_MAX_TIME", '900'),
@@ -80,6 +80,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                 'CLIENT_VPN_ENDPOINT_MAX_TIME':os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'),
                 'VPN_CONNECTION_MAX_TIME':os.environ.get('VPN_CONNECTION_MAX_TIME', '900'),
                 'EC2_AUTOSCALING_GROUP_MAX_TIME':os.environ.get('EC2_AUTOSCALING_GROUP_MAX_TIME', '900'),
+                'ELASTIC_LOAD_BALANCER_MAX_TIME':os.environ.get('ELASTIC_LOAD_BALANCER_MAX_TIME', '900'),
 
                 'SNS_TOPIC': my_topic.topic_arn
             }
@@ -162,6 +163,20 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             actions=["autoscaling:DescribeAutoScalingGroups",
                      "autoscaling:DeleteAutoScalingGroup",                    
             ]        
+        ))
+
+        # Add policy to Lamda Execution role to list and delete ELB and Target groups
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndDeleteELB",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["elasticloadbalancing:DeleteLoadBalancer",
+                     "elasticloadbalancing:DescribeLoadBalancers",
+                     "elasticloadbalancing:DescribeListeners",
+                     "elasticloadbalancing:DescribeTargetGroups",
+                     "elasticloadbalancing:DeleteTargetGroup",
+                     "elasticloadbalancing:DeleteListener"
+                     ]
         ))
 
         # Create schedule event to invoke lamda

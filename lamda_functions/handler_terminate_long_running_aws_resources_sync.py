@@ -16,6 +16,7 @@ TRANSIT_GATEWAY_MAX_TIME = int(os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900')
 CLIENT_VPN_ENDPOINT_MAX_TIME = int(os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'))
 VPN_CONNECTION_MAX_TIME = int(os.environ.get('VPN_CONNECTION_MAX_TIME', '900'))
 EC2_AUTOSCALING_GROUP_MAX_TIME = int(os.environ.get('EC2_AUTOSCALING_GROUP_MAX_TIME', '900'))
+ELASTIC_LOAD_BALANCER_MAX_TIME = int(os.environ.get('ELASTIC_LOAD_BALANCER_MAX_TIME', '900'))
 
 sns_topicARN = os.environ.get('SNS_TOPIC', '')
 
@@ -35,6 +36,8 @@ class ServiceTypes(str, Enum):
     CLIENT_VPN_ENDPOINT = auto()
     VPN_CONNECTION = auto()
     EC2_AUTOSCALING_GROUP = auto()
+    ELASTIC_LOAD_BALANCER = auto()
+    ELB_TARGET_GROUP = "Manual delete target group"
 
 class TerminateLongRunningResource:
     def __init__(self) -> None:
@@ -53,6 +56,38 @@ class TerminateLongRunningResource:
 
         return regions
     
+    def check_long_running_elastic_load_balancers(self, region):
+        current_time = datetime.now(timezone.utc)
+        my_config = Config(region_name=region)
+        client = boto3.client('elbv2', config=my_config)
+        response = client.describe_load_balancers()
+        for elb in response['LoadBalancers']:
+            created_time = elb["CreatedTime"]
+            time_diff = current_time - created_time
+            runtime = time_diff.total_seconds()
+            elb_group_id = elb['LoadBalancerArn']
+            region_id = region + "-" + elb_group_id
+            print("ELB: ", region_id, " Created time:", created_time, " runtime:", runtime, "/", ELASTIC_LOAD_BALANCER_MAX_TIME)
+
+            if runtime>= ELASTIC_LOAD_BALANCER_MAX_TIME:
+                # List all target group of ELB
+                target_groups = []
+                target_groups_response = client.describe_target_groups(LoadBalancerArn=elb_group_id)
+                for target_group in target_groups_response['TargetGroups']:
+                    target_group_id = target_group['TargetGroupName'] + ":"  + target_group['TargetGroupArn']
+                    target_groups.append(target_group_id)
+
+                separator = ', '
+                self.sns_message[ServiceTypes.ELB_TARGET_GROUP][region_id] = separator.join(target_groups)
+                print("ELB:", region_id," deleting ...")
+                try:
+                    client.delete_load_balancer(LoadBalancerArn=elb_group_id)
+                    self.sns_message[ServiceTypes.ELASTIC_LOAD_BALANCER][region_id] = "Deleted"
+                    
+                except Exception as e:
+                        print("Can not delete ELB:", region_id, ". reason:", e)
+                        self.sns_message[ServiceTypes.ELASTIC_LOAD_BALANCER][region_id] = "Try to Terminate but failed with reason:" + str(e)
+    
     def check_long_running_ec2_autoscaling_groups(self, region):
         current_time = datetime.now(timezone.utc)
         my_config = Config(region_name=region)
@@ -68,7 +103,7 @@ class TerminateLongRunningResource:
             print("Capacity:", group["MinSize"], "/", group["DesiredCapacity"], "/", group["MaxSize"])
             print("Total instances:", len(group['Instances']))
 
-            if runtime> EC2_AUTOSCALING_GROUP_MAX_TIME:
+            if runtime>= EC2_AUTOSCALING_GROUP_MAX_TIME:
                 print("AutoScaling group:", region_id," deleting ...")
                 try:
                     client.delete_auto_scaling_group(AutoScalingGroupName=group['AutoScalingGroupName'],ForceDelete=True)
@@ -319,6 +354,7 @@ class TerminateLongRunningResource:
     def run_handler(self):
         regions = self.available_regions("ec2")
         for region in regions:
+            self.check_long_running_elastic_load_balancers(region)
             self.check_long_running_ec2_autoscaling_groups(region)
             self.check_long_running_instances(region)
             self.find_and_release_unused_elastic_ip(region)
