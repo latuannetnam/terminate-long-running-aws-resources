@@ -73,6 +73,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             handler="handler_terminate_long_running_aws_resources_sync.lambda_handler",
             timeout=Duration.seconds(int(os.environ.get('LAMBDA_MAX_RUNTIME', '360'))),
             environment={
+                'REGION': os.getenv('REGION', 'ap-southeast-1'),
                 'MAX_RUNTIME': os.getenv("MAX_RUNTIME", '3600'),
                 'ELASTIC_IP_MAX_TIME': os.getenv("ELASTIC_IP_MAX_TIME", '900'),
                 'NAT_GATEWAY_MAX_TIME': os.getenv("NAT_GATEWAY_MAX_TIME", '900'),

@@ -9,6 +9,7 @@ import pprint
 
 # Constants
 TAG_KEY = "Epoch"
+REGION = os.getenv('REGION')
 MAX_RUNTIME = int(os.environ.get('MAX_RUNTIME', '3600'))
 ELASTIC_IP_MAX_TIME = int(os.environ.get('ELASTIC_IP_MAX_TIME', '900'))
 NAT_GATEWAY_MAX_TIME = int(os.environ.get('NAT_GATEWAY_MAX_TIME', '900'))
@@ -54,6 +55,20 @@ class TerminateLongRunningResource:
         for item in response["Regions"]:
             regions.append(item["RegionName"])
 
+        return regions
+    
+    def get_env_regions(self):
+        regions = []
+        if REGION is not None:
+            if REGION !='ALL':
+                regions = REGION.split(',')
+            else:
+                regions = self.available_regions("ec2")
+        else:
+            session = boto3.session.Session()
+            region_name = session.region_name
+            regions.append(region_name)
+        print("Regions:", regions)
         return regions
     
     def check_long_running_elastic_load_balancers(self, region):
@@ -352,7 +367,8 @@ class TerminateLongRunningResource:
                             vpn_connection_region_id] = "Try to delete but failed with reason:" + str(e)
     
     def run_handler(self):
-        regions = self.available_regions("ec2")
+        # regions = self.available_regions("ec2")
+        regions = self.get_env_regions()
         for region in regions:
             self.check_long_running_elastic_load_balancers(region)
             self.check_long_running_ec2_autoscaling_groups(region)
