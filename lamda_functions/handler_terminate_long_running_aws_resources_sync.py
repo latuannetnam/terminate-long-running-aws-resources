@@ -170,19 +170,19 @@ class TerminateLongRunningResource:
                 runtime = time_diff.total_seconds()
                 state = instance["State"]["Name"]
                 can_terminate = True
-                if 'Tags' in instance:
-                    for tag in instance["Tags"]:
-                        if tag["Key"] == "TerminalProtection" and (tag["Value"] == "Yes" or tag["Value"] == "On" or tag["Value"] == "1"):
-                            can_terminate = False
-                            break
+                # if 'Tags' in instance:
+                #     for tag in instance["Tags"]:
+                #         if tag["Key"] == "TerminalProtection" and (tag["Value"] == "Yes" or tag["Value"] == "On" or tag["Value"] == "1"):
+                #             can_terminate = False
+                #             break
 
                 instance_id = instance["InstanceId"]
                 regional_instance_id = region + "-" + instance_id
-                print(regional_instance_id, ": state:", state, "run time:",
-                      runtime, "/", MAX_RUNTIME, " can_terminate:", can_terminate)
 
                 if state == "running" and runtime >= MAX_RUNTIME and can_terminate:
-                    print("Terminate instance:", instance_id)
+                    print(regional_instance_id, ": state:", state, "run time:",
+                      runtime, "/", MAX_RUNTIME, " can_terminate:", can_terminate)
+                    print("Terminate instance:", regional_instance_id)
                     try:
                         client.terminate_instances(InstanceIds=[instance_id])
                         self.sns_message[ServiceTypes.EC2][regional_instance_id] = "Terminated"
@@ -408,6 +408,7 @@ class TerminateLongRunningResource:
                 time_diff = current_time - creation_time
                 runtime = time_diff.total_seconds()
                 if runtime >= RDS_MAX_TIME:
+                    print("RDS Instance:", db_instance_region_id, runtime, "/", RDS_MAX_TIME)
                     print("Delete long running RDS instances:",
                           db_instance_region_id)
                     try:
