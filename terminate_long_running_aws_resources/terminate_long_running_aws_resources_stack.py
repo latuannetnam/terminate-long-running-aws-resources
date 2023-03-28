@@ -24,7 +24,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
         print("Load context:", profile)
         if profile:
             env_file = ".env." + profile
-            print("Load env:",env_file)
+            print("Load env:", env_file)
             if not load_dotenv(env_file):
                 print("Can not load env:", env_file)
                 load_dotenv()
@@ -71,17 +71,20 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             runtime=_lamda.Runtime.PYTHON_3_9,
             code=_lamda.Code.from_asset("lamda_functions"),
             handler="handler_terminate_long_running_aws_resources_sync.lambda_handler",
-            timeout=Duration.seconds(int(os.environ.get('LAMBDA_MAX_RUNTIME', '360'))),
+            timeout=Duration.seconds(
+                int(os.environ.get('LAMBDA_MAX_RUNTIME', '360'))),
             environment={
                 'REGION': os.getenv('REGION', 'ap-southeast-1'),
                 'MAX_RUNTIME': os.getenv("MAX_RUNTIME", '3600'),
                 'ELASTIC_IP_MAX_TIME': os.getenv("ELASTIC_IP_MAX_TIME", '900'),
                 'NAT_GATEWAY_MAX_TIME': os.getenv("NAT_GATEWAY_MAX_TIME", '900'),
-                'TRANSIT_GATEWAY_MAX_TIME':os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'),
-                'CLIENT_VPN_ENDPOINT_MAX_TIME':os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'),
-                'VPN_CONNECTION_MAX_TIME':os.environ.get('VPN_CONNECTION_MAX_TIME', '900'),
-                'EC2_AUTOSCALING_GROUP_MAX_TIME':os.environ.get('EC2_AUTOSCALING_GROUP_MAX_TIME', '900'),
-                'ELASTIC_LOAD_BALANCER_MAX_TIME':os.environ.get('ELASTIC_LOAD_BALANCER_MAX_TIME', '900'),
+                'TRANSIT_GATEWAY_MAX_TIME': os.environ.get('TRANSIT_GATEWAY_MAX_TIME', '900'),
+                'CLIENT_VPN_ENDPOINT_MAX_TIME': os.environ.get('CLIENT_VPN_ENDPOINT_MAX_TIME', '900'),
+                'VPN_CONNECTION_MAX_TIME': os.environ.get('VPN_CONNECTION_MAX_TIME', '900'),
+                'EC2_AUTOSCALING_GROUP_MAX_TIME': os.environ.get('EC2_AUTOSCALING_GROUP_MAX_TIME', '900'),
+                'ELASTIC_LOAD_BALANCER_MAX_TIME': os.environ.get('ELASTIC_LOAD_BALANCER_MAX_TIME', '900'),
+                'RDS_MAX_TIME': os.environ.get('RDS_MAX_TIME', '900'),
+                'S3_PUBLIC_ACCESS_MAX_TIME': os.environ.get('S3_PUBLIC_ACCESS_MAX_TIME', '900'),
 
                 'SNS_TOPIC': my_topic.topic_arn
             }
@@ -109,7 +112,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                      "ec2:DescribeTags",
                      "ec2:DescribeAddresses",
                      "ec2:ReleaseAddress",
-            ]        
+            ]
         ))
 
         # Add policy to Lamda Execution role to list and delete NAT Gateway
@@ -119,7 +122,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             resources=["*"],
             actions=["ec2:DescribeNatGateways",
                      "ec2:DeleteNatGateway",
-            ]        
+            ]
         ))
 
         # Add policy to Lamda Execution role to list and delete Transit Gateway
@@ -131,7 +134,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                      "ec2:DeleteTransitGateway",
                      "ec2:DescribeTransitGatewayAttachments",
                      "ec2:DeleteTransitGatewayVpcAttachment",
-            ]        
+            ]
         ))
 
         # Add policy to Lamda Execution role to list and delete Client VPN Endpoints
@@ -143,7 +146,7 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                      "ec2:DescribeClientVpnTargetNetworks",
                      "ec2:DisassociateClientVpnTargetNetwork",
                      "ec2:DeleteClientVpnEndpoint",
-            ]        
+            ]
         ))
 
         # Add policy to Lamda Execution role to list and delete VPN Connection
@@ -152,8 +155,8 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             effect=iam.Effect.ALLOW,
             resources=["*"],
             actions=["ec2:DescribeVpnConnections",
-                     "ec2:DeleteVpnConnection",                    
-            ]        
+                     "ec2:DeleteVpnConnection",
+            ]
         ))
 
         # Add policy to Lamda Execution role to list and delete VPN Connection
@@ -162,8 +165,8 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             effect=iam.Effect.ALLOW,
             resources=["*"],
             actions=["autoscaling:DescribeAutoScalingGroups",
-                     "autoscaling:DeleteAutoScalingGroup",                    
-            ]        
+                     "autoscaling:DeleteAutoScalingGroup",
+            ]
         ))
 
         # Add policy to Lamda Execution role to list and delete ELB and Target groups
@@ -180,16 +183,38 @@ class TerminateLongRunningAwsResourcesStack(Stack):
                      ]
         ))
 
+        # Add policy to Lamda Execution role to list and delete RDS intances
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndDeleteRDSInstances",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["rds:DescribeDBInstances",
+                     "rds:DeleteDBInstance",]
+        ))
+
+        # Add policy to Lamda Execution role to list and disable S3 Public Access
+        my_lambda.add_to_role_policy(iam.PolicyStatement(
+            sid="AllowToListAndDisableS3PublicAccess",
+            effect=iam.Effect.ALLOW,
+            resources=["*"],
+            actions=["s3:ListAllMyBuckets",
+                     "s3:DeleteObject",
+                     "s3:GetBucketLocation",
+                     "s3:GetBucketPublicAccessBlock",
+                     "s3:PutBucketPublicAccessBlock",
+                     ]
+        ))
+
         # Create schedule event to invoke lamda
-        my_cron = os.getenv("CRON", "cron(0/15 * * * ? *)")
+        my_cron=os.getenv("CRON", "cron(0/15 * * * ? *)")
         EventbridgeToLambda(self, 'terminate_long_running_aws_resources_cron',
-                            existing_lambda_obj=my_lambda,
-                            event_rule_props=events.RuleProps(
+                            existing_lambda_obj = my_lambda,
+                            event_rule_props = events.RuleProps(
                                 schedule=events.Schedule.expression(my_cron)
                             ))
 
     def release_unused_elastic_ip(self, my_topic):
-        my_lambda = _lamda.Function(
+        my_lambda=_lamda.Function(
             self, "ReleaseUnusedElasticIPAddresses",
             runtime=_lamda.Runtime.PYTHON_3_9,
             code=_lamda.Code.from_asset("lamda_functions"),
