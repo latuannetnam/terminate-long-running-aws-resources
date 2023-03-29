@@ -48,6 +48,7 @@ class ServiceTypes(str, Enum):
     ELASTIC_LOAD_BALANCER = auto()
     ELB_TARGET_GROUP = "Manual delete target group"
     RDS_INSTANCE = auto()
+    RDS_CLUSTER = auto()
     S3_PUBLIC_ACCESS = auto()
 
 
@@ -394,6 +395,19 @@ class TerminateLongRunningResource:
                         self.sns_message[ServiceTypes.VPN_CONNECTION][
                             vpn_connection_region_id] = "Try to delete but failed with reason:" + str(e)
 
+    # Delete db instance
+    def delete_db_instance(self, client, db_instance_region_id, db_instance_id):
+        print("Delete long running RDS instances:",
+                          db_instance_region_id)
+        try:
+            client.delete_db_instance(
+                DBInstanceIdentifier=db_instance_id, SkipFinalSnapshot=True)
+            self.sns_message[ServiceTypes.RDS_INSTANCE][db_instance_region_id] = "Deleted"
+        except ClientError as e:
+            print(e)
+            self.sns_message[ServiceTypes.RDS_INSTANCE][
+                db_instance_region_id] = "Try to delete but failed with reason:" + str(e)
+
     # List and delete long runinng RDS instances
     def check_long_running_rds_instances(self, region):
         current_time = datetime.now(timezone.utc)
@@ -404,22 +418,57 @@ class TerminateLongRunningResource:
             db_instance_id = db_instance['DBInstanceIdentifier']
             db_instance_region_id = region + "-" + db_instance_id
             creation_time = db_instance['InstanceCreateTime']
-            if db_instance['DBInstanceStatus'] != 'deleting' and db_instance['DBInstanceStatus'] != 'deleted':
+            # print("RDS Instance:", db_instance_region_id, runtime, "/", RDS_MAX_TIME)
+            if db_instance['DBInstanceStatus'] != 'available':
                 time_diff = current_time - creation_time
                 runtime = time_diff.total_seconds()
                 if runtime >= RDS_MAX_TIME:
                     print("RDS Instance:", db_instance_region_id, runtime, "/", RDS_MAX_TIME)
-                    print("Delete long running RDS instances:",
-                          db_instance_region_id)
+                    self.delete_db_instance(client, db_instance_region_id, db_instance_id)
+                        
+    
+    # List and delete long running RDS clusters
+    def check_long_running_rds_clusters(self, region):
+        current_time = datetime.now(timezone.utc)
+        my_config = Config(region_name=region)
+        client = boto3.client('rds', config=my_config)
+        response = client.describe_db_clusters()
+        for cluster in response['DBClusters']:
+            cluster_id = cluster['DBClusterIdentifier']
+            cluster_region_id = region + "-" + cluster_id
+            creation_time = cluster['ClusterCreateTime']
+            if cluster['Status'] == 'available':
+                time_diff = current_time - creation_time
+                runtime = time_diff.total_seconds()
+                if runtime >= RDS_MAX_TIME:
+                    print("RDS cluster:", cluster_region_id, runtime, "/", RDS_MAX_TIME)
+                    print("Delete long running RDS instances:")
+                    db_instances = client.describe_db_instances(Filters=[
+                                                                {
+                                                                    'Name': 'db-cluster-id',
+                                                                    'Values': [
+                                                                        cluster_id,
+                                                                    ]
+                                                                },
+                                                            ],)
+                    for db_instance in db_instances['DBInstances']:
+                        db_instance_id = db_instance['DBInstanceIdentifier']
+                        db_instance_region_id = region + "-" + db_instance_id
+                        if db_instance['DBInstanceStatus'] != 'deleting' and db_instance['DBInstanceStatus'] != 'deleted':
+                            print("RDS Instance:", db_instance_region_id, runtime, "/", RDS_MAX_TIME)
+                            self.delete_db_instance(client, db_instance_region_id, db_instance_id)
+                    
+                    # Delete RDS Cluster                          
                     try:
-                        client.delete_db_instance(
-                            DBInstanceIdentifier=db_instance_id, SkipFinalSnapshot=True)
-                        self.sns_message[ServiceTypes.RDS_INSTANCE][db_instance_region_id] = "Deleted"
+                        client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+                        self.sns_message[ServiceTypes.RDS_CLUSTER][cluster_region_id] = "Deleted"
                     except ClientError as e:
                         print(e)
-                        self.sns_message[ServiceTypes.RDS_INSTANCE][
-                            db_instance_region_id] = "Try to delete but failed with reason:" + str(e)
-                        
+                        self.sns_message[ServiceTypes.RDS_CLUSTER][
+                            cluster_region_id] = "Try to delete but failed with reason:" + str(e)
+
+
+
     def s3_block_public_access(self, client, bucket_name):
         try:
             client.put_public_access_block(Bucket=bucket_name,
@@ -481,6 +530,7 @@ class TerminateLongRunningResource:
             self.check_long_running_transit_gateway(region)
             self.check_long_running_client_vpn_endpoints(region)
             self.check_long_running_vpn_connections(region)
+            self.check_long_running_rds_clusters(region)
             self.check_long_running_rds_instances(region)
 
         # Check Global services

@@ -189,7 +189,10 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             effect=iam.Effect.ALLOW,
             resources=["*"],
             actions=["rds:DescribeDBInstances",
-                     "rds:DeleteDBInstance",]
+                     "rds:DeleteDBInstance",
+                     "rds:DescribeDBClusters",
+                     "rds:DeleteDBCluster",
+                     ]
         ))
 
         # Add policy to Lamda Execution role to list and disable S3 Public Access
