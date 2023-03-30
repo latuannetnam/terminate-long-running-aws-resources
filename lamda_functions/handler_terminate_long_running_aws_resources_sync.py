@@ -437,7 +437,7 @@ class TerminateLongRunningResource:
             cluster_id = cluster['DBClusterIdentifier']
             cluster_region_id = region + "-" + cluster_id
             creation_time = cluster['ClusterCreateTime']
-            if cluster['Status'] == 'available':
+            if cluster['Status'] != 'deleting' and cluster['Status'] != 'deleted':
                 time_diff = current_time - creation_time
                 runtime = time_diff.total_seconds()
                 if runtime >= RDS_MAX_TIME:
