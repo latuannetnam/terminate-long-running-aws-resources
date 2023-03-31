@@ -32,10 +32,14 @@ class TerminateLongRunningAwsResourcesStack(Stack):
             load_dotenv()
 
         # Create SNS Topic
-        my_email = os.getenv("MY_EMAIL")
+        my_email_str = os.getenv("MY_EMAIL")
+        my_emails = my_email_str.split(",")
         my_topic = sns.Topic(self, "TerminateLongRunningAWSResourceTopic")
-        my_topic.add_subscription(
-            sub_subscriptions.EmailSubscription(my_email))
+        for my_email in my_emails:
+            print("Add subscription:", my_email)
+            my_topic.add_subscription(
+                sub_subscriptions.EmailSubscription(my_email.strip()))
+        
 
         # Terminate long running EC2 instances
         self.terminate_long_running_resources(my_topic)

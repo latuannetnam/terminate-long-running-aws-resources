@@ -57,7 +57,7 @@ command.
 ## Preparation
 - create .env file
 ```
-MY_EMAIL=you_email@domain.com
+MY_EMAIL=you_email@domain.com,email2@domain2.com
 REGION=ap-southeast-1,us-east-1
 ELASTIC_IP_MAX_TIME=900
 NAT_GATEWAY_MAX_TIME=900
